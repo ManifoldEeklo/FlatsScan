@@ -37,17 +37,16 @@
   --ink:#7D93FF; --ink-text:#0E1430; --ink-soft:#232B4A; --danger:#F08A76; color-scheme:dark;
 }
 *,*::before,*::after{box-sizing:inherit}
-html{height:100%;background:var(--stage);scroll-padding-top:env(safe-area-inset-top,0px)}
-html[data-screen="pages"]{background:var(--paper)}
-body{margin:0;height:100%;font-family:var(--font);color:var(--on-stage);background:var(--stage);overflow:hidden;
+html{height:100%;background:#0E1E4A;scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;height:100%;display:flex;flex-direction:column;font-family:var(--font);color:var(--on-stage);background:var(--stage);overflow:hidden;
   -webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
 html[data-screen="pages"] body{background:var(--paper);color:var(--text)}
 button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
 button:focus-visible{outline:2px solid var(--ink);outline-offset:3px;border-radius:12px}
 svg{display:block}
 
-.screen{display:none;flex-direction:column;height:100%}
-.screen.active{display:flex}
+.screen{display:none;flex-direction:column}
+.screen.active{display:flex;flex:1;min-height:0}
 .view{position:relative;flex:1;min-height:0;overflow:hidden}
 
 /* bottom controls */
@@ -134,13 +133,34 @@ svg{display:block}
 .busy.on{display:grid}
 .spin{width:38px;height:38px;border-radius:50%;border:3px solid rgba(255,255,255,.25);border-top-color:#fff;animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(1turn)}}
-.toast{position:fixed;left:50%;bottom:calc(120px + env(safe-area-inset-bottom,0px));transform:translate(-50%,10px);opacity:0;
+.toast{position:fixed;left:50%;bottom:calc(196px + env(safe-area-inset-bottom,0px));transform:translate(-50%,10px);opacity:0;
   background:var(--on-stage);color:var(--stage);padding:10px 18px;border-radius:20px;font-size:.92rem;font-weight:500;transition:.2s;pointer-events:none;z-index:30;max-width:86vw;text-align:center}
 .toast.on{opacity:1;transform:translate(-50%,0)}
 @media (prefers-reduced-motion:reduce){.flash.on{animation:none}.spin{animation-duration:2.4s}.toast{transition:none}}
 .sample-btn{position:absolute;right:14px;bottom:14px;height:36px;padding:0 14px;border-radius:18px;background:rgba(20,24,31,.72);color:var(--on-stage);font-size:.85rem;font-weight:500;z-index:2}
 .nocam-msg .sample-inline{margin-top:16px;height:44px;padding:0 20px;border-radius:22px;background:var(--on-stage);color:var(--stage);font-weight:600;justify-self:center}
 [hidden]{display:none!important}
+
+/* fixed bottom navigation */
+.appnav{flex:none;display:grid;grid-template-columns:repeat(5,1fr);background:#0E1E4A;border-top:1px solid rgba(255,255,255,.08);padding:6px 6px 8px}
+.appnav button{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:52px;color:#AEB9D6;font-size:.74rem;font-weight:500}
+.appnav button svg{width:22px;height:22px}
+.appnav button[aria-current="page"]{color:#D9AE45}
+.appnav button[disabled]{opacity:.35;cursor:default}
+.appnav .badge{position:absolute;top:3px;left:calc(50% + 5px);min-width:18px;height:18px;border-radius:9px;background:#D9AE45;color:#0E1E4A;font-size:.68rem;font-weight:700;display:grid;place-items:center;padding:0 5px}
+
+/* photo / live switch */
+.camswitch{position:absolute;top:14px;left:50%;transform:translateX(-50%);display:flex;gap:4px;padding:4px;border-radius:22px;background:rgba(20,24,31,.78);z-index:3}
+.camswitch button{height:34px;padding:0 14px;border-radius:17px;font-size:.85rem;font-weight:500;color:var(--on-stage-muted);white-space:nowrap}
+.camswitch button[aria-pressed="true"]{background:var(--on-stage);color:var(--stage)}
+#camera .hint{top:64px}
+#camera.nocam .sample-btn{display:none}
+
+/* closed screen */
+.closed{position:fixed;inset:0;z-index:60;background:#0E1E4A;color:#FFFFFF;display:grid;place-items:center;text-align:center;padding:24px}
+.closed p{color:#B8C2DC;margin:16px 0 28px;font-size:1rem}
+.closed .go{max-width:260px}
+.logo .scan.static{opacity:1;animation:none}
 
 /* splash */
 .splash{position:fixed;inset:0;z-index:50;background:#0E1E4A;display:grid;place-items:center;transition:opacity .5s ease}
@@ -184,9 +204,13 @@ svg{display:block}
     <video id="video" playsinline muted autoplay></video>
     <div class="guide" id="guide"><i></i><i></i><i></i><i></i></div>
     <div class="hint"><span>Line up the page inside the frame</span></div>
+    <div class="camswitch" role="group" aria-label="Camera mode">
+      <button data-cam="photo" aria-pressed="true">Photo</button>
+      <button data-cam="live" aria-pressed="false">Live preview</button>
+    </div>
     <div class="nocam-msg">
-      <div><strong>Camera preview isn’t available here</strong>
-      Tap the shutter to take a photo with your phone’s camera, or import a picture of a page.</div>
+      <div><strong id="camTitle">Take a photo of the page</strong>
+      <span id="camText">Tap the shutter to take a photo with your phone’s camera, or import a picture of a page.</span></div>
       <button class="sample-inline" data-sample>Try a sample page</button>
     </div>
     <button class="sample-btn" data-sample>Try a sample page</button>
@@ -305,6 +329,37 @@ svg{display:block}
   </nav>
 </section>
 
+<nav class="appnav" aria-label="Main">
+  <button data-nav="camera">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/></svg>
+    Scan
+  </button>
+  <button data-nav="pages">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="3" width="13" height="16" rx="1.5"/><path d="M4 7v12.5A1.5 1.5 0 0 0 5.5 21H16"/></svg>
+    Pages<b class="badge" id="navCount" hidden>0</b>
+  </button>
+  <button data-nav="pdf">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>
+    PDF
+  </button>
+  <button data-nav="help">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.5a2.5 2.5 0 1 1 3.4 2.3c-.6.3-1 .8-1 1.5v.5"/><path d="M12 17h.01"/></svg>
+    Help
+  </button>
+  <button data-nav="close">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+    Close
+  </button>
+</nav>
+
+<div class="closed" id="closed" hidden>
+  <div>
+    <h1 class="logo">Fast<span class="scan static">SCAN</span></h1>
+    <p>FastScan is closed and your pages are cleared.</p>
+    <button class="go" id="reopen">Open again</button>
+  </div>
+</div>
+
 <div class="sheet-wrap" id="sheet" hidden>
   <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
     <h2 id="sheetTitle">Your PDF is ready</h2>
@@ -343,7 +398,8 @@ svg{display:block}
 
 <script>
 const $ = s => document.querySelector(s);
-let ready = false;
+let ready = false, live = false;
+try{ live = localStorage.getItem('fastscan-live') === '1'; }catch(e){}
 const state = { pages: [], src: null, quad: null, auto: null, warped: null, enhanced: null, mode: 'scan', guide: null, full: false };
 const downloadsP = (window.claude && typeof window.claude.use === 'function')
   ? window.claude.use('downloads').catch(() => null) : Promise.resolve(null);
@@ -352,7 +408,8 @@ const downloadsP = (window.claude && typeof window.claude.use === 'function')
 function show(name){
   document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === name));
   document.documentElement.dataset.screen = name;
-  if (name === 'camera'){ layoutGuide(); if (ready) startCamera(); updateDone(); } else stopCamera();
+  if (name === 'camera'){ layoutGuide(); applyCamMode(); updateDone(); } else stopCamera();
+  updateNav();
   if (name === 'crop') requestAnimationFrame(layoutCrop);
   if (name === 'pages') renderPages();
 }
@@ -371,7 +428,7 @@ async function startCamera(){
   starting = true;
   try{
     const s = await navigator.mediaDevices.getUserMedia({ audio:false, video:{ facingMode:{ ideal:'environment' }, width:{ ideal:2560 }, height:{ ideal:1440 } } });
-    if (document.documentElement.dataset.screen !== 'camera' || document.hidden){ s.getTracks().forEach(t => t.stop()); return; }
+    if (document.documentElement.dataset.screen !== 'camera' || document.hidden || !live){ s.getTracks().forEach(t => t.stop()); return; }
     stream = s;
     const v = $('#video'); v.srcObject = s; await v.play().catch(()=>{});
     $('#camera').classList.remove('nocam');
@@ -379,9 +436,27 @@ async function startCamera(){
   finally{ starting = false; }
 }
 function stopCamera(){ if (stream){ stream.getTracks().forEach(t => t.stop()); stream = null; $('#video').srcObject = null; } }
-function noCam(){ $('#camera').classList.add('nocam'); }
+function noCam(){
+  $('#camera').classList.add('nocam');
+  $('#camTitle').textContent = 'Live preview isn’t available here';
+  $('#camText').textContent = 'Switch to Photo to use your phone’s camera, or import a picture of a page.';
+}
+/* Photo mode uses the phone’s own camera app: no live video stream, so no recording indicator. */
+function applyCamMode(){
+  document.querySelectorAll('[data-cam]').forEach(b => b.setAttribute('aria-pressed', String((b.dataset.cam === 'live') === live)));
+  if (live){ if (ready) startCamera(); return; }
+  stopCamera();
+  $('#camera').classList.add('nocam');
+  $('#camTitle').textContent = 'Take a photo of the page';
+  $('#camText').textContent = 'Tap the shutter. Your phone’s camera opens: take the picture and confirm it. FastScan then finds the page and flattens it.';
+}
+document.querySelectorAll('[data-cam]').forEach(b => b.addEventListener('click', () => {
+  live = b.dataset.cam === 'live';
+  try{ localStorage.setItem('fastscan-live', live ? '1' : '0'); }catch(e){}
+  applyCamMode();
+}));
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) stopCamera(); else if (ready && document.documentElement.dataset.screen === 'camera') startCamera();
+  if (document.hidden) stopCamera(); else if (ready && live && document.documentElement.dataset.screen === 'camera') startCamera();
 });
 
 function layoutGuide(){
@@ -723,7 +798,7 @@ function renderPages(){
   const n = state.pages.length, grid = $('#grid');
   $('#pagesBody').classList.toggle('is-empty', !n);
   $('#pagesMeta').textContent = n ? `${n} page${n > 1 ? 's' : ''}` : 'No pages';
-  $('#pdfBtn').disabled = !n; $('#clearBtn').disabled = !n;
+  $('#pdfBtn').disabled = !n; $('#clearBtn').disabled = !n; updateNav();
   grid.replaceChildren(...state.pages.map((p, i) => {
     const f = document.createElement('figure');
     const img = document.createElement('img'); img.src = p.url; img.alt = `Page ${i + 1}`;
@@ -802,7 +877,36 @@ if ('serviceWorker' in navigator && !window.claude && /^https?:$/.test(location.
 }
 show('camera');
 setTimeout(() => { const s = $('#splash'); s.classList.add('out'); setTimeout(() => s.remove(), 600); $('#introGo').focus(); }, 3000);
-$('#introGo').addEventListener('click', () => { $('#intro').hidden = true; ready = true; startCamera(); });
+$('#introGo').addEventListener('click', () => { $('#intro').hidden = true; ready = true; if (document.documentElement.dataset.screen === 'camera') applyCamMode(); });
+
+/* ---------- bottom navigation ---------- */
+function updateNav(){
+  const s = document.documentElement.dataset.screen, n = state.pages.length;
+  document.querySelectorAll('[data-nav]').forEach(b => {
+    const k = b.dataset.nav, on = (k === 'camera' && ['camera','crop','enhance'].includes(s)) || (k === 'pages' && s === 'pages');
+    if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+  });
+  const badge = $('#navCount'); badge.hidden = !n; badge.textContent = n;
+  document.querySelector('[data-nav="pdf"]').disabled = !n;
+}
+document.querySelectorAll('[data-nav]').forEach(b => b.addEventListener('click', () => {
+  const k = b.dataset.nav;
+  if (k === 'camera') show('camera');
+  else if (k === 'pages') show('pages');
+  else if (k === 'pdf'){ if (state.pages.length){ show('pages'); $('#pdfBtn').click(); } }
+  else if (k === 'help'){ stopCamera(); $('#intro').hidden = false; $('#introGo').focus(); }
+  else if (k === 'close') closeApp();
+}));
+function closeApp(){
+  const n = state.pages.length;
+  if (n && !confirm(`Close FastScan? Your ${n} scanned page${n > 1 ? 's' : ''} will be removed.`)) return;
+  stopCamera(); closeSheet();
+  state.pages = []; state.src = state.warped = state.enhanced = null;
+  show('pages'); stopCamera();
+  try{ window.close(); }catch(e){}
+  setTimeout(() => { $('#closed').hidden = false; $('#reopen').focus(); }, 250);
+}
+$('#reopen').addEventListener('click', () => { $('#closed').hidden = true; show('camera'); });
 </script>
 </body>
 </html>

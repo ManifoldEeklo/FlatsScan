@@ -57,7 +57,7 @@ The camera only works over HTTPS, which both GitHub Pages and Vercel provide.
 ## Updating the app
 
 1. Edit the files in `public/`.
-2. Raise the cache name at the top of `public/sw.js` (for example `fastscan-v2` → `fastscan-v3`) so installed copies pick up the new version.
+2. Raise the cache name at the top of `public/sw.js` (for example `fastscan-v3` → `fastscan-v4`) so installed copies pick up the new version.
 3. Commit and push.
 
 ## Test locally
