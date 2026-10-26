@@ -1,0 +1,808 @@
+<!doctype html>
+<html lang="en" data-screen="camera">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0E1E4A">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="FastScan">
+<title>FastScan</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+:root{
+  --stage:#14181F; --stage-2:#1D232D; --on-stage:#F3F2EE; --on-stage-muted:#9BA3B1;
+  --paper:#F5F4F0; --surface:#FFFFFF; --text:#1A1D23; --muted:#5E6573; --line:#E3E1DB;
+  --ink:#2747D6; --ink-text:#FFFFFF; --ink-soft:#E6EAFB; --danger:#B93A27;
+  --font:"Instrument Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color-scheme:light;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#16191F; --surface:#1F232B; --text:#ECEBE6; --muted:#9AA0AB; --line:#2D323B;
+    --ink:#7D93FF; --ink-text:#0E1430; --ink-soft:#232B4A; --danger:#F08A76; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#16191F; --surface:#1F232B; --text:#ECEBE6; --muted:#9AA0AB; --line:#2D323B;
+  --ink:#7D93FF; --ink-text:#0E1430; --ink-soft:#232B4A; --danger:#F08A76; color-scheme:dark;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{height:100%;background:var(--stage);scroll-padding-top:env(safe-area-inset-top,0px)}
+html[data-screen="pages"]{background:var(--paper)}
+body{margin:0;height:100%;font-family:var(--font);color:var(--on-stage);background:var(--stage);overflow:hidden;
+  -webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
+html[data-screen="pages"] body{background:var(--paper);color:var(--text)}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+button:focus-visible{outline:2px solid var(--ink);outline-offset:3px;border-radius:12px}
+svg{display:block}
+
+.screen{display:none;flex-direction:column;height:100%}
+.screen.active{display:flex}
+.view{position:relative;flex:1;min-height:0;overflow:hidden}
+
+/* bottom controls */
+.bar{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;padding:14px 22px 16px;background:var(--stage)}
+.bar .slot{display:flex;justify-content:center}
+.bar .slot:first-child{justify-content:flex-start}
+.bar .slot:last-child{justify-content:flex-end}
+.tool{display:flex;flex-direction:column;align-items:center;gap:5px;min-width:64px;min-height:56px;justify-content:center;
+  font-size:.78rem;font-weight:500;color:var(--on-stage);letter-spacing:.01em}
+.tool svg{width:24px;height:24px}
+.tool[disabled]{opacity:.35;cursor:default}
+.shutter{width:76px;height:76px;border-radius:50%;border:4px solid var(--on-stage);display:grid;place-items:center}
+.shutter::after{content:"";width:60px;height:60px;border-radius:50%;background:var(--on-stage);transition:transform .12s}
+.shutter:active::after{transform:scale(.88)}
+.primary{display:flex;align-items:center;gap:8px;height:52px;padding:0 22px;border-radius:26px;background:var(--ink);color:var(--ink-text);
+  font-weight:600;font-size:.98rem}
+.primary svg{width:20px;height:20px}
+.primary[disabled]{opacity:.4;cursor:default}
+.round{width:68px;height:68px;border-radius:50%;background:var(--ink);color:var(--ink-text);display:grid;place-items:center}
+.round svg{width:30px;height:30px}
+
+/* camera */
+#video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000}
+.guide{position:absolute;border-radius:6px;box-shadow:0 0 0 200vmax rgba(10,12,16,.5);pointer-events:none}
+.guide i{position:absolute;width:26px;height:26px;border:3px solid var(--on-stage)}
+.guide i:nth-child(1){left:-3px;top:-3px;border-right:0;border-bottom:0;border-top-left-radius:8px}
+.guide i:nth-child(2){right:-3px;top:-3px;border-left:0;border-bottom:0;border-top-right-radius:8px}
+.guide i:nth-child(3){right:-3px;bottom:-3px;border-left:0;border-top:0;border-bottom-right-radius:8px}
+.guide i:nth-child(4){left:-3px;bottom:-3px;border-right:0;border-top:0;border-bottom-left-radius:8px}
+.hint{position:absolute;left:0;right:0;top:16px;text-align:center;font-size:.92rem;font-weight:500;color:var(--on-stage);pointer-events:none;padding:0 24px}
+.hint span{background:rgba(20,24,31,.7);padding:7px 14px;border-radius:18px;display:inline-block}
+.nocam-msg{display:none;position:absolute;inset:0;place-content:center;text-align:center;padding:32px;gap:10px;color:var(--on-stage-muted);font-size:.95rem;line-height:1.5}
+.nocam-msg strong{display:block;color:var(--on-stage);font-size:1.15rem;font-weight:600;margin-bottom:4px}
+#camera.nocam .nocam-msg{display:grid}
+#camera.nocam #video,#camera.nocam .guide,#camera.nocam .hint{display:none}
+.stack{position:relative;width:44px;height:56px}
+.stack img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:4px;border:2px solid var(--on-stage);background:#fff}
+.stack b{position:absolute;right:-9px;top:-9px;min-width:22px;height:22px;border-radius:11px;background:var(--ink);color:var(--ink-text);font-size:.75rem;display:grid;place-items:center;padding:0 6px}
+.flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
+.flash.on{animation:flash .35s ease-out}
+@keyframes flash{from{opacity:.85}to{opacity:0}}
+
+/* crop */
+#cropView{touch-action:none}
+#cropCanvas,#cropSvg{position:absolute;left:0;top:0}
+#cropSvg{width:100%;height:100%;pointer-events:none}
+.shade{fill:rgba(10,12,16,.55);fill-rule:evenodd}
+.edge{fill:none;stroke:var(--ink);stroke-width:2.5;stroke-linejoin:round}
+.handle{position:absolute;left:0;top:0;width:48px;height:48px;margin:-24px 0 0 -24px;border-radius:50%;touch-action:none;display:grid;place-items:center}
+.handle::after{content:"";width:22px;height:22px;border-radius:50%;background:var(--on-stage);border:3px solid var(--ink);box-shadow:0 1px 6px rgba(0,0,0,.4)}
+.handle:focus-visible{outline-offset:-2px;border-radius:50%}
+#loupe{position:absolute;top:12px;width:112px;height:112px;border-radius:50%;border:3px solid var(--on-stage);box-shadow:0 4px 18px rgba(0,0,0,.5);pointer-events:none;background:#000}
+#loupe.left{left:12px}#loupe.right{right:12px}
+
+/* enhance */
+#enhView{display:grid;place-items:center;padding:20px}
+#enhView canvas{max-width:100%;max-height:100%;box-shadow:0 6px 28px rgba(0,0,0,.45);background:#fff}
+.modes{display:flex;justify-content:center;gap:6px;padding:10px 16px 2px;background:var(--stage)}
+.modes button{height:36px;padding:0 15px;border-radius:18px;font-size:.88rem;font-weight:500;color:var(--on-stage-muted);background:var(--stage-2)}
+.modes button[aria-pressed="true"]{background:var(--on-stage);color:var(--stage)}
+
+/* pages */
+#pages .bar{background:var(--surface);border-top:1px solid var(--line)}
+#pages .tool{color:var(--text)}
+.pages-head{padding:22px 22px 6px;display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.pages-head h1{margin:0;font-size:1.6rem;font-weight:700;letter-spacing:-.01em}
+.pages-head p{margin:0;color:var(--muted);font-size:.95rem}
+.pages-body{flex:1;min-height:0;overflow-y:auto;padding:12px 22px 28px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:18px 16px}
+.grid figure{margin:0;position:relative}
+.grid img{width:100%;aspect-ratio:1/1.414;object-fit:contain;background:var(--surface);border:1px solid var(--line);border-radius:6px;display:block}
+.grid figcaption{margin-top:7px;font-size:.85rem;color:var(--muted)}
+.grid .del{position:absolute;right:6px;top:6px;width:32px;height:32px;border-radius:50%;background:rgba(20,24,31,.72);color:#fff;display:grid;place-items:center}
+.grid .del svg{width:16px;height:16px}
+.empty{display:none;height:100%;place-content:center;text-align:center;color:var(--muted);font-size:1rem;line-height:1.5;padding:24px}
+.empty strong{display:block;color:var(--text);font-size:1.15rem;margin-bottom:4px}
+.is-empty .empty{display:grid}
+.is-empty .grid{display:none}
+.plus{width:68px;height:68px;border-radius:50%;background:var(--text);color:var(--paper);display:grid;place-items:center}
+.plus svg{width:32px;height:32px}
+
+/* busy + toast */
+.busy{position:fixed;inset:0;display:none;place-content:center;justify-items:center;gap:14px;background:rgba(10,12,16,.6);color:#fff;font-weight:500;z-index:20}
+.busy.on{display:grid}
+.spin{width:38px;height:38px;border-radius:50%;border:3px solid rgba(255,255,255,.25);border-top-color:#fff;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(1turn)}}
+.toast{position:fixed;left:50%;bottom:calc(120px + env(safe-area-inset-bottom,0px));transform:translate(-50%,10px);opacity:0;
+  background:var(--on-stage);color:var(--stage);padding:10px 18px;border-radius:20px;font-size:.92rem;font-weight:500;transition:.2s;pointer-events:none;z-index:30;max-width:86vw;text-align:center}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+@media (prefers-reduced-motion:reduce){.flash.on{animation:none}.spin{animation-duration:2.4s}.toast{transition:none}}
+.sample-btn{position:absolute;right:14px;bottom:14px;height:36px;padding:0 14px;border-radius:18px;background:rgba(20,24,31,.72);color:var(--on-stage);font-size:.85rem;font-weight:500;z-index:2}
+.nocam-msg .sample-inline{margin-top:16px;height:44px;padding:0 20px;border-radius:22px;background:var(--on-stage);color:var(--stage);font-weight:600;justify-self:center}
+[hidden]{display:none!important}
+
+/* splash */
+.splash{position:fixed;inset:0;z-index:50;background:#0E1E4A;display:grid;place-items:center;transition:opacity .5s ease}
+.splash.out{opacity:0;pointer-events:none}
+.logo{margin:0;font-size:clamp(3.2rem,15vw,6rem);font-weight:700;letter-spacing:-.02em;color:#FFFFFF;line-height:1}
+.logo .scan{color:#D9AE45;opacity:0;animation:scanIn .9s ease-out 1s forwards;letter-spacing:.01em}
+@keyframes scanIn{from{opacity:0}to{opacity:1}}
+
+/* intro */
+.intro{position:fixed;inset:0;z-index:40;background:#0E1E4A;color:#FFFFFF;overflow-y:auto;
+  padding:calc(36px + env(safe-area-inset-top,0px)) 26px calc(26px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column}
+.intro-inner{max-width:460px;width:100%;margin:auto;display:flex;flex-direction:column;gap:26px}
+.intro h2{margin:0;font-size:1.75rem;font-weight:700;letter-spacing:-.01em;line-height:1.2}
+.intro h2 span{color:#D9AE45}
+.steps{list-style:none;margin:0;padding:0;display:grid;gap:20px}
+.steps li{display:grid;grid-template-columns:44px 1fr;gap:14px;align-items:start}
+.steps .num{width:44px;height:44px;border-radius:50%;border:2px solid #D9AE45;color:#D9AE45;display:grid;place-items:center;font-weight:700;font-size:1.1rem}
+.steps strong{display:block;font-size:1.08rem;font-weight:600;margin:2px 0 3px}
+.steps p{margin:0;color:#B8C2DC;font-size:.95rem;line-height:1.5}
+.go{height:54px;border-radius:27px;background:#D9AE45;color:#0E1E4A;font-weight:700;font-size:1.05rem;width:100%}
+.go:focus-visible{outline:2px solid #FFFFFF}
+
+/* pdf ready sheet */
+.sheet-wrap{position:fixed;inset:0;z-index:25;background:rgba(10,12,16,.55);display:flex;align-items:flex-end;justify-content:center}
+.sheet{width:100%;max-width:560px;background:var(--surface);color:var(--text);border-radius:22px 22px 0 0;
+  padding:24px 22px calc(18px + env(safe-area-inset-bottom,0px));display:grid;gap:10px}
+.sheet h2{margin:0;font-size:1.3rem;font-weight:700}
+.sheet p{margin:0 0 8px;color:var(--muted);font-size:.92rem;word-break:break-word}
+.sheet .primary,.sheet .secondary{width:100%;justify-content:center}
+.secondary{display:flex;align-items:center;gap:8px;height:52px;border-radius:26px;border:1.5px solid var(--line);font-weight:600;font-size:.98rem;color:var(--text)}
+.secondary svg{width:20px;height:20px}
+.text-btn{height:44px;color:var(--muted);font-weight:500}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+</style>
+</head>
+<body>
+
+<!-- 1. CAMERA -->
+<section class="screen" id="camera">
+  <div class="view" id="camView">
+    <video id="video" playsinline muted autoplay></video>
+    <div class="guide" id="guide"><i></i><i></i><i></i><i></i></div>
+    <div class="hint"><span>Line up the page inside the frame</span></div>
+    <div class="nocam-msg">
+      <div><strong>Camera preview isn’t available here</strong>
+      Tap the shutter to take a photo with your phone’s camera, or import a picture of a page.</div>
+      <button class="sample-inline" data-sample>Try a sample page</button>
+    </div>
+    <button class="sample-btn" data-sample>Try a sample page</button>
+    <div class="flash" id="flash"></div>
+  </div>
+  <nav class="bar">
+    <div class="slot">
+      <button class="tool" id="importBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="9" cy="10" r="1.8"/><path d="m21 16-5-5-8 9"/></svg>
+        Import
+      </button>
+    </div>
+    <div class="slot"><button class="shutter" id="shutterBtn" aria-label="Take picture"></button></div>
+    <div class="slot">
+      <button class="tool" id="doneBtn" aria-label="See pages" style="visibility:hidden">
+        <span class="stack"><img id="lastThumb" alt=""><b id="pageCount">0</b></span>
+      </button>
+    </div>
+  </nav>
+  <input type="file" id="shootInput" accept="image/*" capture="environment" class="sr" tabindex="-1">
+  <input type="file" id="importInput" accept="image/*" multiple class="sr" tabindex="-1">
+</section>
+
+<!-- 2. FRAME -->
+<section class="screen" id="crop">
+  <div class="view" id="cropView">
+    <canvas id="cropCanvas"></canvas>
+    <svg id="cropSvg"><path class="shade" id="shade"/><polygon class="edge" id="edge"/></svg>
+    <button class="handle" data-i="0" aria-label="Top left corner"></button>
+    <button class="handle" data-i="1" aria-label="Top right corner"></button>
+    <button class="handle" data-i="2" aria-label="Bottom right corner"></button>
+    <button class="handle" data-i="3" aria-label="Bottom left corner"></button>
+    <canvas id="loupe" hidden></canvas>
+    <div class="hint"><span>Drag the corners to the edges of the page</span></div>
+  </div>
+  <nav class="bar">
+    <div class="slot">
+      <button class="tool" id="retakeBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+        Retake
+      </button>
+    </div>
+    <div class="slot">
+      <button class="round" id="flattenBtn" aria-label="Flatten page">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>
+      </button>
+    </div>
+    <div class="slot">
+      <button class="tool" id="autoBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/></svg>
+        <span id="autoLabel">Full photo</span>
+      </button>
+    </div>
+  </nav>
+</section>
+
+<!-- 3. ENHANCE -->
+<section class="screen" id="enhance">
+  <div class="view" id="enhView"></div>
+  <div class="modes" role="group" aria-label="Look">
+    <button data-mode="scan" aria-pressed="true">Scan</button>
+    <button data-mode="bw" aria-pressed="false">Black &amp; white</button>
+    <button data-mode="color" aria-pressed="false">Color</button>
+    <button data-mode="original" aria-pressed="false">Original</button>
+  </div>
+  <nav class="bar">
+    <div class="slot">
+      <button class="tool" id="backBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/></svg>
+        Reframe
+      </button>
+    </div>
+    <div class="slot">
+      <button class="primary" id="keepBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>
+        Keep page
+      </button>
+    </div>
+    <div class="slot">
+      <button class="tool" id="rotateBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11A8 8 0 1 0 17.7 17"/><path d="M20 4v7h-7"/></svg>
+        Rotate
+      </button>
+    </div>
+  </nav>
+</section>
+
+<!-- 4. PAGES -->
+<section class="screen" id="pages">
+  <header class="pages-head">
+    <h1>Your scan</h1>
+    <p id="pagesMeta">No pages</p>
+  </header>
+  <div class="pages-body" id="pagesBody">
+    <div class="grid" id="grid"></div>
+    <div class="empty"><div><strong>No pages yet</strong>Tap + to scan your first page.</div></div>
+  </div>
+  <nav class="bar">
+    <div class="slot">
+      <button class="tool" id="clearBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>
+        Start over
+      </button>
+    </div>
+    <div class="slot">
+      <button class="plus" id="addBtn" aria-label="Add another scan">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+    </div>
+    <div class="slot">
+      <button class="primary" id="pdfBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M12 12v6M9 15l3 3 3-3"/></svg>
+        Make PDF
+      </button>
+    </div>
+  </nav>
+</section>
+
+<div class="sheet-wrap" id="sheet" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+    <h2 id="sheetTitle">Your PDF is ready</h2>
+    <p id="sheetName"></p>
+    <button class="primary" id="sendBtn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 3 10 14"/><path d="m21 3-7 18-4-7-7-4z"/></svg>
+      Send to myself
+    </button>
+    <button class="secondary" id="saveBtn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>
+      Save to device
+    </button>
+    <button class="text-btn" id="sheetClose">Close</button>
+  </div>
+</div>
+
+<div class="intro" id="intro" role="dialog" aria-modal="true" aria-labelledby="introTitle">
+  <div class="intro-inner">
+    <h2 id="introTitle">How Fast<span>SCAN</span> works</h2>
+    <ol class="steps">
+      <li><span class="num">1</span><div><strong>Scan a document</strong><p>Line the page up in the frame and tap the shutter. FastScan flattens it and makes the text easy to read.</p></div></li>
+      <li><span class="num">2</span><div><strong>Add more pages</strong><p>Tap + to scan the next page. Keep going until you have them all.</p></div></li>
+      <li><span class="num">3</span><div><strong>Make the PDF</strong><p>Tap Make PDF to put every page into one file.</p></div></li>
+      <li><span class="num">4</span><div><strong>Send it to yourself</strong><p>Tap Send to myself and pick your email or chat app to forward the PDF.</p></div></li>
+    </ol>
+    <button class="go" id="introGo">Start scanning</button>
+  </div>
+</div>
+
+<div class="splash" id="splash" aria-label="FastScan">
+  <h1 class="logo">Fast<span class="scan">SCAN</span></h1>
+</div>
+
+<div class="busy" id="busy" role="status" aria-live="polite"><div class="spin"></div><div id="busyText">Working…</div></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+let ready = false;
+const state = { pages: [], src: null, quad: null, auto: null, warped: null, enhanced: null, mode: 'scan', guide: null, full: false };
+const downloadsP = (window.claude && typeof window.claude.use === 'function')
+  ? window.claude.use('downloads').catch(() => null) : Promise.resolve(null);
+
+/* ---------- screens ---------- */
+function show(name){
+  document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === name));
+  document.documentElement.dataset.screen = name;
+  if (name === 'camera'){ layoutGuide(); if (ready) startCamera(); updateDone(); } else stopCamera();
+  if (name === 'crop') requestAnimationFrame(layoutCrop);
+  if (name === 'pages') renderPages();
+}
+
+/* ---------- toast / busy ---------- */
+let toastT;
+function toast(msg){ const t = $('#toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), 2400); }
+function busy(msg){ $('#busy').classList.toggle('on', !!msg); if (msg) $('#busyText').textContent = msg; }
+const nextFrame = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 20)));
+
+/* ---------- camera ---------- */
+let stream = null, starting = false;
+async function startCamera(){
+  if (stream || starting) return;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ noCam(); return; }
+  starting = true;
+  try{
+    const s = await navigator.mediaDevices.getUserMedia({ audio:false, video:{ facingMode:{ ideal:'environment' }, width:{ ideal:2560 }, height:{ ideal:1440 } } });
+    if (document.documentElement.dataset.screen !== 'camera' || document.hidden){ s.getTracks().forEach(t => t.stop()); return; }
+    stream = s;
+    const v = $('#video'); v.srcObject = s; await v.play().catch(()=>{});
+    $('#camera').classList.remove('nocam');
+  }catch(e){ noCam(); }
+  finally{ starting = false; }
+}
+function stopCamera(){ if (stream){ stream.getTracks().forEach(t => t.stop()); stream = null; $('#video').srcObject = null; } }
+function noCam(){ $('#camera').classList.add('nocam'); }
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) stopCamera(); else if (ready && document.documentElement.dataset.screen === 'camera') startCamera();
+});
+
+function layoutGuide(){
+  const view = $('#camView'), W = view.clientWidth, H = view.clientHeight; if (!W) return;
+  const top = 64, bottom = 24, side = W * 0.08, ratio = 1 / 1.414;
+  const aw = W - side * 2, ah = H - top - bottom;
+  let gw = Math.min(aw, ah * ratio), gh = gw / ratio;
+  const g = { x: (W - gw) / 2, y: top + (ah - gh) / 2, w: gw, h: gh };
+  Object.assign($('#guide').style, { left: g.x + 'px', top: g.y + 'px', width: g.w + 'px', height: g.h + 'px' });
+  state.guide = g;
+}
+function guideInVideo(v){
+  const view = $('#camView'), W = view.clientWidth, H = view.clientHeight, vw = v.videoWidth, vh = v.videoHeight, g = state.guide;
+  if (!g) return null;
+  const s = Math.max(W / vw, H / vh), ox = (W - vw * s) / 2, oy = (H - vh * s) / 2;
+  const P = (x, y) => ({ x: Math.min(vw, Math.max(0, (x - ox) / s)), y: Math.min(vh, Math.max(0, (y - oy) / s)) });
+  return [P(g.x, g.y), P(g.x + g.w, g.y), P(g.x + g.w, g.y + g.h), P(g.x, g.y + g.h)];
+}
+
+$('#shutterBtn').addEventListener('click', () => {
+  const v = $('#video');
+  if (!stream || !v.videoWidth){ $('#shootInput').click(); return; }
+  const c = document.createElement('canvas'); c.width = v.videoWidth; c.height = v.videoHeight;
+  c.getContext('2d').drawImage(v, 0, 0);
+  const f = $('#flash'); f.classList.remove('on'); void f.offsetWidth; f.classList.add('on');
+  beginCrop(c, guideInVideo(v));
+});
+$('#importBtn').addEventListener('click', () => $('#importInput').click());
+$('#shootInput').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) loadFile(f); });
+$('#importInput').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) loadFile(f); });
+$('#doneBtn').addEventListener('click', () => show('pages'));
+document.querySelectorAll('[data-sample]').forEach(b => b.addEventListener('click', () => beginCrop(makeSample(), null)));
+
+/* sample photo for testing: a page lying crooked on a desk, unevenly lit */
+let sampleN = 0;
+function makeSample(){
+  sampleN++;
+  const pw = 850, ph = 1100, pg = document.createElement('canvas'); pg.width = pw; pg.height = ph;
+  const x = pg.getContext('2d');
+  x.fillStyle = '#F4F1EA'; x.fillRect(0, 0, pw, ph);
+  x.fillStyle = '#1E2230'; x.font = 'bold 48px Georgia, serif'; x.fillText(sampleN % 2 ? 'Invoice 2026-114' : 'Meeting notes', 70, 130);
+  x.font = '24px Georgia, serif'; x.fillStyle = '#4A4F5C'; x.fillText('Northbrook Studio, 12 Harbour Lane', 70, 175);
+  x.fillRect(70, 205, pw - 140, 3);
+  const words = 'the quick review of each item shows totals agreed with the client and work delivered on time for every phase of the project including design build and final checks'.split(' ');
+  x.font = '25px Georgia, serif'; x.fillStyle = '#2A2E38';
+  let y = 270;
+  for (let p = 0; p < 5; p++){
+    for (let l = 0; l < 5; l++){
+      let line = '', k = (p * 7 + l * 3) % words.length;
+      while (x.measureText(line + words[k] + ' ').width < pw - 150 - (l === 4 ? 260 : 0)){ line += words[k] + ' '; k = (k + 1) % words.length; }
+      x.fillText(line, 70, y); y += 36;
+    }
+    y += 26;
+  }
+  x.font = 'bold 28px Georgia, serif'; x.fillText('Total due: € 1,240.00', 70, y + 20);
+  const W = 1600, H = 1200, c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  const bg = g.createLinearGradient(0, 0, W, H); bg.addColorStop(0, '#6A5442'); bg.addColorStop(1, '#3A2D23');
+  g.fillStyle = bg; g.fillRect(0, 0, W, H);
+  g.save(); g.translate(W / 2 + 20, H / 2 + 10); g.rotate(sampleN % 2 ? -0.09 : 0.07); g.transform(1, 0.03, sampleN % 2 ? 0.07 : -0.05, 1, 0, 0); g.scale(0.92, 0.92);
+  g.shadowColor = 'rgba(0,0,0,.55)'; g.shadowBlur = 40; g.shadowOffsetY = 14;
+  g.drawImage(pg, -pw / 2, -ph / 2); g.restore();
+  g.globalCompositeOperation = 'multiply';
+  const light = g.createRadialGradient(W * 0.25, H * 0.2, 80, W * 0.5, H * 0.6, W * 0.9);
+  light.addColorStop(0, '#FFFFFF'); light.addColorStop(1, '#8C8C8C');
+  g.fillStyle = light; g.fillRect(0, 0, W, H);
+  g.globalCompositeOperation = 'source-over';
+  return c;
+}
+
+async function loadFile(file){
+  busy('Opening photo…');
+  try{
+    const url = URL.createObjectURL(file), img = new Image(); img.src = url; await img.decode();
+    const k = Math.min(1, 3200 / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement('canvas'); c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+    busy(false); beginCrop(c, null);
+  }catch(e){ busy(false); toast('That file couldn’t be opened. Try a JPG or PNG photo.'); }
+}
+
+function updateDone(){
+  const n = state.pages.length, b = $('#doneBtn');
+  b.style.visibility = n ? 'visible' : 'hidden';
+  if (n){ $('#lastThumb').src = state.pages[n - 1].url; $('#pageCount').textContent = n; b.setAttribute('aria-label', `See ${n} page${n > 1 ? 's' : ''}`); }
+}
+
+/* ---------- auto detection ---------- */
+function detect(c){
+  const s = Math.min(1, 320 / Math.max(c.width, c.height));
+  const w = Math.max(8, Math.round(c.width * s)), h = Math.max(8, Math.round(c.height * s));
+  const t = document.createElement('canvas'); t.width = w; t.height = h;
+  const x = t.getContext('2d', { willReadFrequently: true }); x.filter = 'blur(2px)'; x.drawImage(c, 0, 0, w, h);
+  const d = x.getImageData(0, 0, w, h).data, n = w * h, g = new Uint8Array(n), hist = new Uint32Array(256);
+  for (let i = 0, j = 0; i < n; i++, j += 4){ const v = (d[j] * 77 + d[j+1] * 150 + d[j+2] * 29) >> 8; g[i] = v; hist[v]++; }
+  let sum = 0; for (let i = 0; i < 256; i++) sum += i * hist[i];
+  let sB = 0, wB = 0, best = 0, th = 128;
+  for (let i = 0; i < 256; i++){ wB += hist[i]; if (!wB) continue; const wF = n - wB; if (!wF) break; sB += i * hist[i];
+    const mB = sB / wB, mF = (sum - sB) / wF, between = wB * wF * (mB - mF) * (mB - mF); if (between > best){ best = between; th = i; } }
+  const lab = new Int32Array(n), stack = new Int32Array(n); let top = null, id = 0;
+  for (let p = 0; p < n; p++){
+    if (lab[p] || g[p] <= th) continue;
+    id++; let sp = 0; stack[sp++] = p; lab[p] = id;
+    const cc = { count:0, minS:1e9, maxS:-1e9, minD:1e9, maxD:-1e9, tl:p, tr:p, br:p, bl:p, x0:w, x1:0, y0:h, y1:0 };
+    while (sp){
+      const q = stack[--sp], qx = q % w, qy = (q / w) | 0; cc.count++;
+      const S = qx + qy, D = qx - qy;
+      if (S < cc.minS){ cc.minS = S; cc.tl = q; } if (S > cc.maxS){ cc.maxS = S; cc.br = q; }
+      if (D > cc.maxD){ cc.maxD = D; cc.tr = q; } if (D < cc.minD){ cc.minD = D; cc.bl = q; }
+      if (qx < cc.x0) cc.x0 = qx; if (qx > cc.x1) cc.x1 = qx; if (qy < cc.y0) cc.y0 = qy; if (qy > cc.y1) cc.y1 = qy;
+      if (qx > 0){ const r = q - 1; if (!lab[r] && g[r] > th){ lab[r] = id; stack[sp++] = r; } }
+      if (qx < w - 1){ const r = q + 1; if (!lab[r] && g[r] > th){ lab[r] = id; stack[sp++] = r; } }
+      if (qy > 0){ const r = q - w; if (!lab[r] && g[r] > th){ lab[r] = id; stack[sp++] = r; } }
+      if (qy < h - 1){ const r = q + w; if (!lab[r] && g[r] > th){ lab[r] = id; stack[sp++] = r; } }
+    }
+    if (!top || cc.count > top.count) top = cc;
+  }
+  if (!top || top.count < n * 0.12) return null;
+  if (top.x1 - top.x0 > w * 0.97 && top.y1 - top.y0 > h * 0.97) return null;
+  const pt = q => ({ x: Math.min(c.width, ((q % w) + 0.5) / s), y: Math.min(c.height, (((q / w) | 0) + 0.5) / s) });
+  const quad = [pt(top.tl), pt(top.tr), pt(top.br), pt(top.bl)];
+  return area(quad) > 0.1 * c.width * c.height ? quad : null;
+}
+function area(q){ let a = 0; for (let i = 0; i < 4; i++){ const p = q[i], r = q[(i + 1) % 4]; a += p.x * r.y - r.x * p.y; } return Math.abs(a) / 2; }
+function fullQuad(c){ return [{x:0,y:0},{x:c.width,y:0},{x:c.width,y:c.height},{x:0,y:c.height}]; }
+function insetQuad(c){ const mx = c.width * 0.08, my = c.height * 0.08;
+  return [{x:mx,y:my},{x:c.width-mx,y:my},{x:c.width-mx,y:c.height-my},{x:mx,y:c.height-my}]; }
+
+function beginCrop(c, guide){
+  state.src = c;
+  state.auto = detect(c) || guide || insetQuad(c);
+  state.quad = state.auto.map(p => ({...p}));
+  state.full = false; $('#autoLabel').textContent = 'Full photo';
+  show('crop');
+}
+
+/* ---------- framing ---------- */
+const crop = { s:1, ox:0, oy:0, drag:-1, off:{x:0,y:0} };
+function layoutCrop(){
+  const view = $('#cropView'), cv = $('#cropCanvas'), src = state.src, W = view.clientWidth, H = view.clientHeight;
+  if (!src || !W) return;
+  const pad = 30, top = 58;
+  const s = Math.min((W - pad * 2) / src.width, (H - top - pad) / src.height);
+  crop.s = s; crop.ox = (W - src.width * s) / 2; crop.oy = top + (H - top - pad - src.height * s) / 2;
+  const dpr = window.devicePixelRatio || 1;
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); cv.style.width = W + 'px'; cv.style.height = H + 'px';
+  const x = cv.getContext('2d'); x.setTransform(dpr, 0, 0, dpr, 0, 0); x.clearRect(0, 0, W, H);
+  x.imageSmoothingQuality = 'high'; x.drawImage(src, crop.ox, crop.oy, src.width * crop.s, src.height * crop.s);
+  $('#cropSvg').setAttribute('viewBox', `0 0 ${W} ${H}`);
+  drawQuad();
+}
+function toScreen(p){ return { x: crop.ox + p.x * crop.s, y: crop.oy + p.y * crop.s }; }
+function drawQuad(){
+  const view = $('#cropView'), W = view.clientWidth, H = view.clientHeight;
+  const P = state.quad.map(toScreen);
+  $('#shade').setAttribute('d', `M0 0H${W}V${H}H0Z M${P.map(p => p.x.toFixed(1) + ' ' + p.y.toFixed(1)).join(' L')} Z`);
+  $('#edge').setAttribute('points', P.map(p => p.x.toFixed(1) + ',' + p.y.toFixed(1)).join(' '));
+  document.querySelectorAll('.handle').forEach((h, i) => { h.style.transform = `translate(${P[i].x}px,${P[i].y}px)`; });
+}
+function setCorner(i, sx, sy){
+  const src = state.src;
+  state.quad[i] = { x: Math.min(src.width, Math.max(0, (sx - crop.ox) / crop.s)), y: Math.min(src.height, Math.max(0, (sy - crop.oy) / crop.s)) };
+  drawQuad();
+}
+function drawLoupe(i){
+  const L = $('#loupe'), p = state.quad[i], size = 112, dpr = window.devicePixelRatio || 1;
+  if (L.width !== size * dpr){ L.width = size * dpr; L.height = size * dpr; }
+  const x = L.getContext('2d'); x.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const r = size / (crop.s * 3);
+  x.fillStyle = '#000'; x.fillRect(0, 0, size, size);
+  x.save(); x.beginPath(); x.arc(size/2, size/2, size/2, 0, Math.PI * 2); x.clip();
+  x.drawImage(state.src, p.x - r / 2, p.y - r / 2, r, r, 0, 0, size, size); x.restore();
+  x.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--ink').trim() || '#2747D6'; x.lineWidth = 1.5;
+  x.beginPath(); x.moveTo(size/2, size/2 - 14); x.lineTo(size/2, size/2 + 14); x.moveTo(size/2 - 14, size/2); x.lineTo(size/2 + 14, size/2); x.stroke();
+  const sp = toScreen(p), W = $('#cropView').clientWidth;
+  L.className = sp.x < W / 2 ? 'right' : 'left'; L.hidden = false;
+}
+document.querySelectorAll('.handle').forEach(h => {
+  const i = +h.dataset.i;
+  h.addEventListener('pointerdown', e => {
+    e.preventDefault(); h.setPointerCapture(e.pointerId); crop.drag = i;
+    const r = $('#cropView').getBoundingClientRect(), sp = toScreen(state.quad[i]);
+    crop.off = { x: e.clientX - r.left - sp.x, y: e.clientY - r.top - sp.y };
+    drawLoupe(i);
+  });
+  h.addEventListener('pointermove', e => {
+    if (crop.drag !== i) return;
+    const r = $('#cropView').getBoundingClientRect();
+    setCorner(i, e.clientX - r.left - crop.off.x, e.clientY - r.top - crop.off.y); drawLoupe(i);
+  });
+  const end = () => { crop.drag = -1; $('#loupe').hidden = true; };
+  h.addEventListener('pointerup', end); h.addEventListener('pointercancel', end);
+  h.addEventListener('keydown', e => {
+    const step = (e.shiftKey ? 12 : 3), m = { ArrowLeft:[-step,0], ArrowRight:[step,0], ArrowUp:[0,-step], ArrowDown:[0,step] }[e.key];
+    if (!m) return; e.preventDefault(); const sp = toScreen(state.quad[i]); setCorner(i, sp.x + m[0], sp.y + m[1]);
+  });
+});
+$('#retakeBtn').addEventListener('click', () => show('camera'));
+$('#autoBtn').addEventListener('click', () => {
+  state.full = !state.full;
+  state.quad = (state.full ? fullQuad(state.src) : state.auto).map(p => ({...p}));
+  $('#autoLabel').textContent = state.full ? 'Detect page' : 'Full photo';
+  drawQuad();
+});
+$('#flattenBtn').addEventListener('click', async () => {
+  busy('Flattening page…'); await nextFrame();
+  state.warped = warp(state.src, state.quad);
+  renderEnhance(); busy(false); show('enhance');
+});
+
+/* ---------- perspective flattening ---------- */
+function solve(A, b){
+  const n = b.length;
+  for (let i = 0; i < n; i++){
+    let p = i; for (let r = i + 1; r < n; r++) if (Math.abs(A[r][i]) > Math.abs(A[p][i])) p = r;
+    [A[i], A[p]] = [A[p], A[i]]; [b[i], b[p]] = [b[p], b[i]];
+    for (let r = i + 1; r < n; r++){ const f = A[r][i] / A[i][i]; for (let c = i; c < n; c++) A[r][c] -= f * A[i][c]; b[r] -= f * b[i]; }
+  }
+  const x = new Array(n);
+  for (let i = n - 1; i >= 0; i--){ let s = b[i]; for (let c = i + 1; c < n; c++) s -= A[i][c] * x[c]; x[i] = s / A[i][i]; }
+  return x;
+}
+function homography(from, to){
+  const A = [], b = [];
+  for (let i = 0; i < 4; i++){
+    const { x, y } = from[i], u = to[i].x, v = to[i].y;
+    A.push([x, y, 1, 0, 0, 0, -u * x, -u * y]); b.push(u);
+    A.push([0, 0, 0, x, y, 1, -v * x, -v * y]); b.push(v);
+  }
+  return solve(A, b);
+}
+function warp(src, q){
+  const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  let W = Math.max(dist(q[0], q[1]), dist(q[3], q[2])), H = Math.max(dist(q[0], q[3]), dist(q[1], q[2]));
+  const k = Math.min(1, 2400 / Math.max(W, H)); W = Math.max(8, Math.round(W * k)); H = Math.max(8, Math.round(H * k));
+  const h = homography([{x:0,y:0},{x:W,y:0},{x:W,y:H},{x:0,y:H}], q);
+  const sw = src.width, sh = src.height, sd = src.getContext('2d').getImageData(0, 0, sw, sh).data;
+  const out = new ImageData(W, H), od = out.data, maxU = sw - 1.001, maxV = sh - 1.001, row = sw * 4;
+  for (let y = 0; y < H; y++){
+    const yy = y + 0.5;
+    for (let x = 0; x < W; x++){
+      const xx = x + 0.5, den = h[6] * xx + h[7] * yy + 1;
+      let u = (h[0] * xx + h[1] * yy + h[2]) / den - 0.5, v = (h[3] * xx + h[4] * yy + h[5]) / den - 0.5;
+      if (u < 0) u = 0; else if (u > maxU) u = maxU; if (v < 0) v = 0; else if (v > maxV) v = maxV;
+      const x0 = u | 0, y0 = v | 0, fx = u - x0, fy = v - y0, i00 = (y0 * sw + x0) * 4, i01 = i00 + row, o = (y * W + x) * 4;
+      for (let c = 0; c < 3; c++){
+        const a = sd[i00 + c] + (sd[i00 + 4 + c] - sd[i00 + c]) * fx, bb = sd[i01 + c] + (sd[i01 + 4 + c] - sd[i01 + c]) * fx;
+        od[o + c] = a + (bb - a) * fy;
+      }
+      od[o + 3] = 255;
+    }
+  }
+  const c = document.createElement('canvas'); c.width = W; c.height = H; c.getContext('2d').putImageData(out, 0, 0);
+  return c;
+}
+
+/* ---------- enhancement ---------- */
+function bgMaps(d, W, H, B){
+  const sw = Math.ceil(W / B), sh = Math.ceil(H / B), n = sw * sh;
+  const m = [new Float32Array(n), new Float32Array(n), new Float32Array(n)], [mr, mg, mb] = m;
+  for (let y = 0; y < H; y++){
+    const rb = ((y / B) | 0) * sw;
+    for (let x = 0; x < W; x++){
+      const bi = rb + ((x / B) | 0), i = (y * W + x) * 4;
+      if (d[i] > mr[bi]) mr[bi] = d[i]; if (d[i+1] > mg[bi]) mg[bi] = d[i+1]; if (d[i+2] > mb[bi]) mb[bi] = d[i+2];
+    }
+  }
+  const pass = (a, fn) => { const o = new Float32Array(n);
+    for (let y = 0; y < sh; y++) for (let x = 0; x < sw; x++){
+      let acc = fn === 'max' ? 0 : 0, cnt = 0;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++){
+        const xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= sw || yy >= sh) continue;
+        const v = a[yy * sw + xx]; if (fn === 'max'){ if (v > acc) acc = v; } else { acc += v; cnt++; }
+      }
+      o[y * sw + x] = fn === 'max' ? acc : acc / cnt;
+    } return o; };
+  return { sw, sh, maps: m.map(a => { let r = pass(pass(a, 'max'), 'max'); r = pass(pass(r, 'avg'), 'avg'); for (let i = 0; i < n; i++) if (r[i] < 60) r[i] = 60; return r; }) };
+}
+function enhance(src, mode){
+  const W = src.width, H = src.height, out = document.createElement('canvas'); out.width = W; out.height = H;
+  const oc = out.getContext('2d');
+  if (mode === 'original'){ oc.drawImage(src, 0, 0); return out; }
+  const id = src.getContext('2d').getImageData(0, 0, W, H), d = id.data;
+  if (mode === 'color'){
+    for (let i = 0; i < d.length; i += 4){
+      const g = 0.3 * d[i] + 0.59 * d[i+1] + 0.11 * d[i+2];
+      for (let c = 0; c < 3; c++){ let v = g + (d[i+c] - g) * 1.25; v = (v - 128) * 1.3 + 146; d[i+c] = v < 0 ? 0 : v > 255 ? 255 : v; }
+    }
+    oc.putImageData(id, 0, 0); return out;
+  }
+  const B = 16, { sw, sh, maps } = bgMaps(d, W, H, B);
+  const cx0 = new Int32Array(W), cx1 = new Int32Array(W), cfx = new Float32Array(W);
+  for (let x = 0; x < W; x++){ let g = (x + 0.5) / B - 0.5; if (g < 0) g = 0; if (g > sw - 1) g = sw - 1; cx0[x] = g | 0; cx1[x] = Math.min(sw - 1, cx0[x] + 1); cfx[x] = g - cx0[x]; }
+  const bw = mode === 'bw', lo = bw ? 0.52 : 0.30, hi = bw ? 0.82 : 0.88, span = hi - lo, nv = [0, 0, 0];
+  for (let y = 0; y < H; y++){
+    let gy = (y + 0.5) / B - 0.5; if (gy < 0) gy = 0; if (gy > sh - 1) gy = sh - 1;
+    const y0 = gy | 0, y1 = Math.min(sh - 1, y0 + 1), fy = gy - y0, r0 = y0 * sw, r1 = y1 * sw;
+    for (let x = 0; x < W; x++){
+      const i = (y * W + x) * 4, a = cx0[x], b = cx1[x], fx = cfx[x];
+      for (let c = 0; c < 3; c++){
+        const m = maps[c], t = m[r0 + a] + (m[r0 + b] - m[r0 + a]) * fx, u = m[r1 + a] + (m[r1 + b] - m[r1 + a]) * fx;
+        nv[c] = d[i + c] / (t + (u - t) * fy);
+      }
+      if (bw){
+        let v = ((0.3 * nv[0] + 0.59 * nv[1] + 0.11 * nv[2]) - lo) / span; v = v < 0 ? 0 : v > 1 ? 255 : v * 255;
+        d[i] = d[i+1] = d[i+2] = v;
+      } else {
+        for (let c = 0; c < 3; c++){ let v = (nv[c] - lo) / span; d[i + c] = v < 0 ? 0 : v > 1 ? 255 : 255 * Math.pow(v, 1.15); }
+      }
+    }
+  }
+  oc.putImageData(id, 0, 0); return out;
+}
+function renderEnhance(){
+  state.enhanced = enhance(state.warped, state.mode);
+  const v = $('#enhView'); v.replaceChildren(state.enhanced);
+  document.querySelectorAll('.modes button').forEach(b => b.setAttribute('aria-pressed', b.dataset.mode === state.mode));
+}
+document.querySelectorAll('.modes button').forEach(b => b.addEventListener('click', async () => {
+  if (state.mode === b.dataset.mode) return;
+  state.mode = b.dataset.mode; busy('Enhancing…'); await nextFrame(); renderEnhance(); busy(false);
+}));
+$('#rotateBtn').addEventListener('click', async () => {
+  busy('Rotating…'); await nextFrame();
+  const s = state.warped, c = document.createElement('canvas'); c.width = s.height; c.height = s.width;
+  const x = c.getContext('2d'); x.translate(c.width, 0); x.rotate(Math.PI / 2); x.drawImage(s, 0, 0);
+  state.warped = c; renderEnhance(); busy(false);
+});
+$('#backBtn').addEventListener('click', () => show('crop'));
+$('#keepBtn').addEventListener('click', () => {
+  const e = state.enhanced;
+  state.pages.push({ url: e.toDataURL('image/jpeg', 0.86), w: e.width, h: e.height });
+  state.src = state.warped = state.enhanced = null;
+  show('pages'); toast(`Page ${state.pages.length} added`);
+});
+
+/* ---------- pages ---------- */
+function renderPages(){
+  const n = state.pages.length, grid = $('#grid');
+  $('#pagesBody').classList.toggle('is-empty', !n);
+  $('#pagesMeta').textContent = n ? `${n} page${n > 1 ? 's' : ''}` : 'No pages';
+  $('#pdfBtn').disabled = !n; $('#clearBtn').disabled = !n;
+  grid.replaceChildren(...state.pages.map((p, i) => {
+    const f = document.createElement('figure');
+    const img = document.createElement('img'); img.src = p.url; img.alt = `Page ${i + 1}`;
+    const cap = document.createElement('figcaption'); cap.textContent = `Page ${i + 1}`;
+    const del = document.createElement('button'); del.className = 'del'; del.setAttribute('aria-label', `Remove page ${i + 1}`);
+    del.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>';
+    del.addEventListener('click', () => { state.pages.splice(i, 1); renderPages(); });
+    f.append(img, del, cap); return f;
+  }));
+}
+$('#addBtn').addEventListener('click', () => show('camera'));
+$('#clearBtn').addEventListener('click', () => {
+  if (!state.pages.length) return;
+  if (confirm('Remove all pages and start a new scan?')){ state.pages = []; renderPages(); }
+});
+$('#pdfBtn').addEventListener('click', async () => {
+  if (!state.pages.length) return;
+  if (!window.jspdf){ toast('The PDF maker didn’t load. Check your connection and try again.'); return; }
+  busy('Making PDF…'); await nextFrame();
+  let blob;
+  try{
+    const { jsPDF } = window.jspdf; let doc = null;
+    for (const p of state.pages){
+      const land = p.w > p.h, pw = land ? 297 : 210, ph = land ? 210 : 297;
+      if (!doc) doc = new jsPDF({ orientation: land ? 'l' : 'p', unit: 'mm', format: 'a4', compress: true });
+      else doc.addPage('a4', land ? 'l' : 'p');
+      const k = Math.min(pw / p.w, ph / p.h), w = p.w * k, h = p.h * k;
+      doc.addImage(p.url, 'JPEG', (pw - w) / 2, (ph - h) / 2, w, h, undefined, 'FAST');
+    }
+    blob = doc.output('blob');
+  }catch(e){ busy(false); toast('The PDF couldn’t be made. Try again.'); return; }
+  busy(false);
+  const now = new Date(), pad = n => String(n).padStart(2, '0');
+  const name = `Scan ${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}.${pad(now.getMinutes())}.pdf`;
+  openSheet(blob, name);
+});
+
+/* ---------- pdf ready: send or save ---------- */
+let ready_pdf = null;
+function openSheet(blob, name){ ready_pdf = { blob, name }; $('#sheetName').textContent = name; $('#sheet').hidden = false; $('#sendBtn').focus(); }
+function closeSheet(){ $('#sheet').hidden = true; }
+$('#sheetClose').addEventListener('click', closeSheet);
+$('#sheet').addEventListener('click', e => { if (e.target.id === 'sheet') closeSheet(); });
+$('#saveBtn').addEventListener('click', async () => { if (ready_pdf){ await savePdf(ready_pdf.blob, ready_pdf.name); } });
+$('#sendBtn').addEventListener('click', async () => {
+  if (!ready_pdf) return;
+  const { blob, name } = ready_pdf;
+  let file = null; try{ file = new File([blob], name, { type: 'application/pdf' }); }catch(e){}
+  if (file && navigator.canShare && navigator.canShare({ files: [file] })){
+    try{ await navigator.share({ files: [file], title: name, text: 'Scanned with FastScan' }); toast('PDF sent'); closeSheet(); return; }
+    catch(e){ if (e && e.name === 'AbortError') return; }
+  }
+  toast('Sharing isn’t available here, so the PDF is saved instead. Attach it to an email to yourself.');
+  await savePdf(blob, name);
+});
+async function savePdf(blob, name){
+  if (window.claude){
+    const dl = await downloadsP;
+    if (!dl){ toast('Saving files isn’t available in this view.'); return; }
+    try{ const r = await dl.save({ filename: name, data: blob }); if (r.status === 'saved') toast('PDF saved'); }
+    catch(e){ if (e && e.code !== 'declined') toast('The PDF couldn’t be saved. Try again.'); }
+    return;
+  }
+  const url = URL.createObjectURL(blob), a = document.createElement('a');
+  a.href = url; a.download = name; document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000); toast('PDF saved');
+}
+
+/* ---------- boot ---------- */
+window.addEventListener('resize', () => {
+  const s = document.documentElement.dataset.screen;
+  if (s === 'camera') layoutGuide(); if (s === 'crop') layoutCrop();
+});
+if ('serviceWorker' in navigator && !window.claude && /^https?:$/.test(location.protocol)){
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+show('camera');
+setTimeout(() => { const s = $('#splash'); s.classList.add('out'); setTimeout(() => s.remove(), 600); $('#introGo').focus(); }, 3000);
+$('#introGo').addEventListener('click', () => { $('#intro').hidden = true; ready = true; startCamera(); });
+</script>
+</body>
+</html>
